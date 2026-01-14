@@ -12,6 +12,7 @@
   "author": "Prakash",
   "license": "MIT",
   "dependencies": {
+    "@getbrevo/brevo": "^3.0.1",
     "axios": "^1.6.7",
     "bcrypt": "^5.1.1",
     "colors": "^1.4.0",
@@ -29,6 +30,7 @@
     "nodemon": "^3.0.3",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "resend": "^6.7.0",
     "validator": "^13.11.0"
   }
 }
