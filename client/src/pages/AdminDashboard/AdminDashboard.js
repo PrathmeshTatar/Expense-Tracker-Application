@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { Table, Modal, Card, Statistic, Tag, Button, Space, message } from "antd";
+import React, { useState, useMemo, useEffect } from "react";
+import { Table, Modal, Card, Statistic, Tag, Button, message, Input, Spin, Dropdown } from "antd";
 import {
   UserOutlined,
   DollarOutlined,
@@ -12,81 +12,129 @@ import {
   ManOutlined,
   WomanOutlined,
   DashboardOutlined,
-  AppstoreOutlined,
   LogoutOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  SearchOutlined,
+  ProfileOutlined,
+  DownOutlined,
+  StopOutlined,
+  ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import moment from "moment";
+import axios from "axios";
+import { BASE_URL } from "../../utils/baseURL";
+import { getResponseError } from "../../utils/getResponseError";
 import "./AdminDashboard.css";
 
-// Dummy data - will be replaced with API data later
-const generateDummyUsers = () => {
-  const users = [];
-  const names = [
-    "John Doe",
-    "Jane Smith",
-    "Michael Johnson",
-    "Emily Davis",
-    "David Wilson",
-    "Sarah Brown",
-    "Robert Taylor",
-    "Jessica Martinez",
-    "William Anderson",
-    "Ashley Thomas",
-  ];
-  const sports = ["Cricket", "Football", "Basketball", "Tennis", "Swimming"];
-  const genders = ["Male", "Female", "Other"];
-  const addresses = [
-    "123 Main St, Bangalore, Karnataka 560001",
-    "456 Park Ave, Mumbai, Maharashtra 400001",
-    "789 MG Road, Delhi, Delhi 110001",
-    "321 Church St, Bangalore, Karnataka 560001",
-    "654 Market St, Pune, Maharashtra 411001",
-  ];
-
-  for (let i = 1; i <= 10; i++) {
-    const createdDate = moment()
-      .subtract(Math.floor(Math.random() * 365), "days")
-      .subtract(Math.floor(Math.random() * 24), "hours")
-      .subtract(Math.floor(Math.random() * 60), "minutes");
-
-    const income = Math.floor(Math.random() * 500000) + 100000;
-    const expense = Math.floor(Math.random() * 300000) + 50000;
-    const totalTurnover = income + expense;
-
-    users.push({
-      userId: `USER${String(i).padStart(6, "0")}`,
-      email: `user${i}@example.com`,
-      phone: i % 3 === 0 ? null : `+91 ${Math.floor(Math.random() * 9000000000) + 1000000000}`,
-      createdDate: createdDate.toISOString(),
-      totalTurnover: totalTurnover,
-      totalIncome: income,
-      totalExpense: expense,
-      // Detailed user information
-      name: names[i - 1],
-      address: addresses[Math.floor(Math.random() * addresses.length)],
-      favoriteSport: sports[Math.floor(Math.random() * sports.length)],
-      gender: genders[Math.floor(Math.random() * genders.length)],
-    });
-  }
-  return users;
-};
-
 const AdminDashboard = () => {
-  const [users, setUsers] = useState(generateDummyUsers());
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchText, setSearchText] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [adminProfile, setAdminProfile] = useState(null);
+  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [phoneValue, setPhoneValue] = useState("");
+  const [updatingPhone, setUpdatingPhone] = useState(false);
+  const [isDeactivateModalVisible, setIsDeactivateModalVisible] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+  const [summaryStats, setSummaryStats] = useState({
+    totalUsers: 0,
+    totalTurnover: 0,
+  });
   const navigate = useNavigate();
 
-  // Calculate summary statistics
-  const summaryStats = useMemo(() => {
-    const totalUsers = users.length;
-    const totalTurnover = users.reduce((sum, user) => sum + user.totalTurnover, 0);
-    return {
-      totalUsers,
-      totalTurnover,
+  // Check if admin is logged in and fetch dashboard data
+  useEffect(() => {
+    // Check if admin is logged in
+    const adminData = localStorage.getItem("admin");
+    if (!adminData) {
+      message.error("Please login to access the dashboard");
+      navigate("/admin/login");
+      return;
+    }
+
+    const admin = JSON.parse(adminData);
+    if (!admin || !admin.adminId) {
+      message.error("Invalid admin session");
+      localStorage.removeItem("admin");
+      navigate("/admin/login");
+      return;
+    }
+
+    const fetchDashboardData = async () => {
+      try {
+
+        setLoading(true);
+        const { data } = await axios.post(`${BASE_URL}/api/v1/admin/dashboard`, {
+          adminId: admin.adminId,
+        });
+
+        if (data.status === "success") {
+          setUsers(data.data.users || []);
+          setSummaryStats({
+            totalUsers: data.data.summary.totalUsers || 0,
+            totalTurnover: data.data.summary.totalTurnover || 0,
+          });
+        } else {
+          message.error(data.message || "Failed to fetch dashboard data");
+        }
+      } catch (error) {
+        console.error("Dashboard data fetch error:", error);
+        const errorMessage = getResponseError(error);
+        message.error(errorMessage || "Failed to fetch dashboard data");
+        
+        // If unauthorized, redirect to login
+        if (error.response?.status === 401) {
+          localStorage.removeItem("admin");
+          navigate("/admin/login");
+        }
+      } finally {
+        setLoading(false);
+      }
     };
-  }, [users]);
+
+    fetchDashboardData();
+  }, [navigate]);
+
+  // Filter users based on search text
+  const filteredUsers = useMemo(() => {
+    if (!searchText.trim()) {
+      return users;
+    }
+
+    const searchLower = searchText.toLowerCase().trim();
+    return users.filter((user) => {
+      // Search across all user attributes
+      const userId = user.userId?.toLowerCase() || "";
+      const email = user.email?.toLowerCase() || "";
+      const phone = user.phone?.toLowerCase() || "";
+      const isVerified = user.isVerified ? "verified" : "not verified";
+      const createdDate = moment(user.createdDate).format("DD MMM YYYY, HH:mm").toLowerCase();
+      const totalTurnover = user.totalTurnover?.toString() || "";
+      const name = user.name?.toLowerCase() || "";
+      const address = user.address?.toLowerCase() || "";
+      const favoriteSport = user.favoriteSport?.toLowerCase() || "";
+      const gender = user.gender?.toLowerCase() || "";
+
+      return (
+        userId.includes(searchLower) ||
+        email.includes(searchLower) ||
+        phone.includes(searchLower) ||
+        isVerified.includes(searchLower) ||
+        createdDate.includes(searchLower) ||
+        totalTurnover.includes(searchLower) ||
+        name.includes(searchLower) ||
+        address.includes(searchLower) ||
+        favoriteSport.includes(searchLower) ||
+        gender.includes(searchLower)
+      );
+    });
+  }, [users, searchText]);
 
   // Handle row click to show user details
   const handleRowClick = (record) => {
@@ -101,6 +149,154 @@ const AdminDashboard = () => {
     message.success("Logged out from Admin Dashboard successfully");
     // Navigate to home page
     navigate("/");
+  };
+
+  // Handle view admin profile
+  const handleViewProfile = async () => {
+    try {
+      const adminData = localStorage.getItem("admin");
+      if (!adminData) {
+        message.error("Please login to view profile");
+        navigate("/admin/login");
+        return;
+      }
+
+      const admin = JSON.parse(adminData);
+      if (!admin || !admin.adminId) {
+        message.error("Invalid admin session");
+        localStorage.removeItem("admin");
+        navigate("/admin/login");
+        return;
+      }
+
+      setProfileLoading(true);
+      const { data } = await axios.post(`${BASE_URL}/api/v1/admin/profile`, {
+        adminId: admin.adminId,
+      });
+
+      if (data.status === "success") {
+        setAdminProfile(data.admin);
+        setPhoneValue(data.admin.phone !== "Not Provided" ? data.admin.phone : "");
+        setIsProfileModalVisible(true);
+      } else {
+        message.error(data.message || "Failed to fetch admin profile");
+      }
+    } catch (error) {
+      console.error("Profile fetch error:", error);
+      const errorMessage = getResponseError(error);
+      message.error(errorMessage || "Failed to fetch admin profile");
+      
+      if (error.response?.status === 401) {
+        localStorage.removeItem("admin");
+        navigate("/admin/login");
+      }
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  // Handle update phone number
+  const handleUpdatePhone = async () => {
+    try {
+      const adminData = localStorage.getItem("admin");
+      if (!adminData) {
+        message.error("Please login to update profile");
+        navigate("/admin/login");
+        return;
+      }
+
+      const admin = JSON.parse(adminData);
+      if (!admin || !admin.adminId) {
+        message.error("Invalid admin session");
+        localStorage.removeItem("admin");
+        navigate("/admin/login");
+        return;
+      }
+
+      setUpdatingPhone(true);
+      const { data } = await axios.put(`${BASE_URL}/api/v1/admin/update-phone`, {
+        adminId: admin.adminId,
+        phone: phoneValue.trim() || "Not Provided",
+      });
+
+      if (data.status === "success") {
+        setAdminProfile(data.admin);
+        setIsEditingPhone(false);
+        message.success("Phone number updated successfully!");
+      } else {
+        message.error(data.message || "Failed to update phone number");
+      }
+    } catch (error) {
+      console.error("Update phone error:", error);
+      const errorMessage = getResponseError(error);
+      message.error(errorMessage || "Failed to update phone number");
+      
+      if (error.response?.status === 401) {
+        localStorage.removeItem("admin");
+        navigate("/admin/login");
+      }
+    } finally {
+      setUpdatingPhone(false);
+    }
+  };
+
+  // Handle cancel edit phone
+  const handleCancelEditPhone = () => {
+    setPhoneValue(adminProfile?.phone !== "Not Provided" ? adminProfile.phone : "");
+    setIsEditingPhone(false);
+  };
+
+  // Handle deactivate account
+  const handleDeactivateAccount = () => {
+    setIsDeactivateModalVisible(true);
+  };
+
+  // Confirm deactivation
+  const confirmDeactivateAccount = async () => {
+    try {
+      const adminData = localStorage.getItem("admin");
+      if (!adminData) {
+        message.error("Please login to deactivate account");
+        navigate("/admin/login");
+        return;
+      }
+
+      const admin = JSON.parse(adminData);
+      if (!admin || !admin.adminId) {
+        message.error("Invalid admin session");
+        localStorage.removeItem("admin");
+        navigate("/admin/login");
+        return;
+      }
+
+      setDeactivating(true);
+      const { data } = await axios.put(`${BASE_URL}/api/v1/admin/deactivate`, {
+        adminId: admin.adminId,
+      });
+
+      if (data.status === "success") {
+        message.success("Your account has been deactivated successfully");
+        setIsDeactivateModalVisible(false);
+        // Clear session and redirect to login
+        localStorage.removeItem("admin");
+        setTimeout(() => {
+          navigate("/admin/login");
+        }, 1500);
+      } else {
+        message.error(data.message || "Failed to deactivate account");
+      }
+    } catch (error) {
+      console.error("Deactivate account error:", error);
+      const errorMessage = getResponseError(error);
+      message.error(errorMessage || "Failed to deactivate account");
+      
+      if (error.response?.status === 401) {
+        localStorage.removeItem("admin");
+        navigate("/admin/login");
+      }
+    } finally {
+      setDeactivating(false);
+    }
   };
 
   // Table columns
@@ -125,19 +321,25 @@ const AdminDashboard = () => {
       ),
     },
     {
-      title: "Phone Number",
-      dataIndex: "phone",
-      key: "phone",
-      width: 150,
-      render: (text) =>
-        text ? (
-          <span>
-            <PhoneOutlined style={{ marginRight: 8, color: "#667eea" }} />
-            {text}
-          </span>
-        ) : (
-          <Tag color="default">Not Provided</Tag>
-        ),
+      title: "isVerified",
+      dataIndex: "isVerified",
+      key: "isVerified",
+      width: 120,
+      render: (isVerified) => (
+        <Tag color={isVerified ? "green" : "red"}>
+          {isVerified ? (
+            <>
+              <CheckCircleOutlined style={{ marginRight: 4 }} />
+              Verified
+            </>
+          ) : (
+            <>
+              <CloseCircleOutlined style={{ marginRight: 4 }} />
+              Not Verified
+            </>
+          )}
+        </Tag>
+      ),
     },
     {
       title: "Created Date & Time",
@@ -147,7 +349,7 @@ const AdminDashboard = () => {
       render: (text) => (
         <span>
           <CalendarOutlined style={{ marginRight: 8, color: "#667eea" }} />
-          {moment(text).format("DD MMM YYYY, HH:mm")}
+          {text ? moment(text).format("DD MMM YYYY, HH:mm") : "N/A"}
         </span>
       ),
       sorter: (a, b) => moment(a.createdDate).unix() - moment(b.createdDate).unix(),
@@ -159,10 +361,10 @@ const AdminDashboard = () => {
       width: 150,
       render: (text) => (
         <span style={{ fontWeight: 600, color: "#667eea" }}>
-          ₹{text.toLocaleString("en-IN")}
+          ₹{(text || 0).toLocaleString("en-IN")}
         </span>
       ),
-      sorter: (a, b) => a.totalTurnover - b.totalTurnover,
+      sorter: (a, b) => (a.totalTurnover || 0) - (b.totalTurnover || 0),
     },
     {
       title: "Action",
@@ -185,6 +387,16 @@ const AdminDashboard = () => {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="admin-dashboard-wrapper">
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+          <Spin size="large" tip="Loading dashboard data..." />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="admin-dashboard-wrapper">
       {/* Admin Dashboard Header */}
@@ -197,16 +409,53 @@ const AdminDashboard = () => {
               <p className="admin-header-subtitle">for Expense Management System</p>
             </div>
           </div>
-          <Button
-            type="primary"
-            icon={<LogoutOutlined />}
-            size="large"
-            className="admin-header-button"
-            onClick={handleLogout}
-            title="Logout from Dashboard and Go to Expense Management System"
-          >
-            Logout From Dashboard
-          </Button>
+          <div className="admin-header-buttons">
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "profile",
+                    label: "Admin Profile",
+                    icon: <ProfileOutlined />,
+                    onClick: handleViewProfile,
+                  },
+                  {
+                    type: "divider",
+                  },
+                  {
+                    key: "deactivate",
+                    label: "Deactivate Account",
+                    icon: <StopOutlined />,
+                    danger: true,
+                    onClick: handleDeactivateAccount,
+                  },
+                ],
+              }}
+              trigger={["click"]}
+              placement="bottomRight"
+            >
+              <Button
+                type="default"
+                icon={<ProfileOutlined />}
+                size="large"
+                className="admin-profile-button"
+                loading={profileLoading}
+                title="Admin Profile Menu"
+              >
+                Admin Profile <DownOutlined style={{ fontSize: "12px", marginLeft: "4px" }} />
+              </Button>
+            </Dropdown>
+            <Button
+              type="primary"
+              icon={<LogoutOutlined />}
+              size="large"
+              className="admin-header-button"
+              onClick={handleLogout}
+              title="Logout from Dashboard and Go to Expense Management System"
+            >
+              Logout
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -236,16 +485,42 @@ const AdminDashboard = () => {
 
           {/* Users Table */}
           <Card className="users-table-card">
-            <h2 className="table-title">Registered Users</h2>
+            <div className="table-header-with-search">
+              <h2 className="table-title">Registered Users</h2>
+              <div className="filter-and-count-wrapper">
+                <div className="admin-search-bar">
+                  <Input
+                    placeholder="Search by User ID, Email, Phone, Status, Date, Turnover, Name, etc."
+                    allowClear
+                    size="large"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    prefix={<SearchOutlined style={{ color: '#667eea', fontSize: '16px' }} />}
+                    className="admin-search-input"
+                  />
+                </div>
+                <div className="filtered-row-count">
+                  <span className="filtered-count-label">Filtered Results:</span>
+                  <span className="filtered-count-value">
+                    {filteredUsers.length} {filteredUsers.length === 1 ? 'user' : 'users'}
+                    {searchText && filteredUsers.length !== summaryStats.totalUsers && (
+                      <span className="total-count"> of {summaryStats.totalUsers} total</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
             <Table
               columns={columns}
-              dataSource={users}
+              dataSource={filteredUsers}
               rowKey="userId"
               pagination={{
                 pageSize: 10,
                 showSizeChanger: true,
-                showTotal: (total) => `Total ${total} users`,
+                showTotal: (total, range) => 
+                  `${range[0]}-${range[1]} of ${total} users${searchText ? ` (filtered from ${summaryStats.totalUsers} total)` : ''}`,
               }}
+              loading={loading}
               onRow={(record) => ({
                 onClick: () => handleRowClick(record),
                 style: { cursor: "pointer" },
@@ -298,16 +573,44 @@ const AdminDashboard = () => {
                   <div className="detail-row">
                     <div className="detail-item-horizontal">
                       <span className="detail-label">
+                        {selectedUser.isVerified ? (
+                          <CheckCircleOutlined style={{ marginRight: 8, color: "#52c41a" }} />
+                        ) : (
+                          <CloseCircleOutlined style={{ marginRight: 8, color: "#ff4d4f" }} />
+                        )}
+                        isVerified
+                      </span>
+                      <span className="detail-value">
+                        <Tag color={selectedUser.isVerified ? "green" : "red"}>
+                          {selectedUser.isVerified ? (
+                            <>
+                              <CheckCircleOutlined style={{ marginRight: 4 }} />
+                              Verified
+                            </>
+                          ) : (
+                            <>
+                              <CloseCircleOutlined style={{ marginRight: 4 }} />
+                              Not Verified
+                            </>
+                          )}
+                        </Tag>
+                      </span>
+                    </div>
+
+                    <div className="detail-item-horizontal">
+                      <span className="detail-label">
                         <PhoneOutlined style={{ marginRight: 8, color: "#667eea" }} />
                         Phone Number
                       </span>
                       <span className="detail-value">
-                        {selectedUser.phone || (
+                        {selectedUser.phone ? selectedUser.phone : (
                           <Tag color="default">Not Provided</Tag>
                         )}
                       </span>
                     </div>
+                  </div>
 
+                  <div className="detail-row">
                     <div className="detail-item-horizontal">
                       <span className="detail-label">
                         <CalendarOutlined style={{ marginRight: 8, color: "#667eea" }} />
@@ -342,7 +645,7 @@ const AdminDashboard = () => {
                         Favorite Sport
                       </span>
                       <span className="detail-value">
-                        <Tag color="green">{selectedUser.favoriteSport}</Tag>
+                        <Tag color="green">{selectedUser.favoriteSport || "Not Provided"}</Tag>
                       </span>
                     </div>
                   </div>
@@ -355,7 +658,7 @@ const AdminDashboard = () => {
                       <HomeOutlined style={{ marginRight: 8, color: "#667eea" }} />
                       Address
                     </span>
-                    <span className="detail-value">{selectedUser.address}</span>
+                    <span className="detail-value">{selectedUser.address || "Not Provided"}</span>
                   </div>
                 </div>
 
@@ -369,7 +672,7 @@ const AdminDashboard = () => {
                       </span>
                       <span className="detail-value financial-value">
                         <strong style={{ color: "#667eea" }}>
-                          ₹{selectedUser.totalTurnover.toLocaleString("en-IN")}
+                          ₹{(selectedUser.totalTurnover || 0).toLocaleString("en-IN")}
                         </strong>
                       </span>
                     </div>
@@ -377,7 +680,7 @@ const AdminDashboard = () => {
                     <div className="detail-item-horizontal financial-item">
                       <span className="detail-label">Total Income</span>
                       <span className="detail-value financial-value" style={{ color: "#52c41a" }}>
-                        ₹{selectedUser.totalIncome.toLocaleString("en-IN")}
+                        ₹{(selectedUser.totalIncome || 0).toLocaleString("en-IN")}
                       </span>
                     </div>
                   </div>
@@ -386,13 +689,223 @@ const AdminDashboard = () => {
                     <div className="detail-item-horizontal financial-item full-width">
                       <span className="detail-label">Total Expense</span>
                       <span className="detail-value financial-value" style={{ color: "#ff4d4f" }}>
-                        ₹{selectedUser.totalExpense.toLocaleString("en-IN")}
+                        ₹{(selectedUser.totalExpense || 0).toLocaleString("en-IN")}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
             )}
+          </Modal>
+
+          {/* Admin Profile Modal */}
+          <Modal
+            title={
+              <span>
+                <ProfileOutlined style={{ marginRight: 8 }} />
+                Admin Profile
+              </span>
+            }
+            open={isProfileModalVisible}
+            onCancel={() => setIsProfileModalVisible(false)}
+            footer={[
+              <Button key="close" onClick={() => setIsProfileModalVisible(false)}>
+                Close
+              </Button>,
+            ]}
+            width={700}
+            className="admin-profile-modal"
+          >
+            {adminProfile && (
+              <div className="admin-profile-content">
+                <div className="detail-section-horizontal">
+                  <div className="detail-row">
+                    <div className="detail-item-horizontal">
+                      <span className="detail-label">
+                        <UserOutlined style={{ marginRight: 8, color: "#667eea" }} />
+                        Full Name
+                      </span>
+                      <span className="detail-value">{adminProfile.name}</span>
+                    </div>
+
+                    <div className="detail-item-horizontal">
+                      <span className="detail-label">
+                        <MailOutlined style={{ marginRight: 8, color: "#667eea" }} />
+                        Email Address
+                      </span>
+                      <span className="detail-value">{adminProfile.email}</span>
+                    </div>
+                  </div>
+
+                  <div className="detail-row">
+                    <div className="detail-item-horizontal full-width">
+                      <span className="detail-label">
+                        <PhoneOutlined style={{ marginRight: 8, color: "#667eea" }} />
+                        Phone Number
+                      </span>
+                      {isEditingPhone ? (
+                        <div className="phone-edit-section">
+                          <Input
+                            value={phoneValue}
+                            onChange={(e) => setPhoneValue(e.target.value)}
+                            placeholder="Enter phone number (optional)"
+                            prefix={<PhoneOutlined style={{ color: "#667eea" }} />}
+                            style={{ marginTop: "8px", marginBottom: "8px" }}
+                            allowClear
+                          />
+                          <div className="phone-edit-buttons">
+                            <Button
+                              type="primary"
+                              size="small"
+                              onClick={handleUpdatePhone}
+                              loading={updatingPhone}
+                              style={{ marginRight: "8px" }}
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              size="small"
+                              onClick={handleCancelEditPhone}
+                              disabled={updatingPhone}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="phone-display-section">
+                          <span className="detail-value">
+                            {adminProfile.phone !== "Not Provided" ? adminProfile.phone : (
+                              <Tag color="default">Not Provided</Tag>
+                            )}
+                          </span>
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => setIsEditingPhone(true)}
+                            style={{ marginLeft: "8px", padding: 0 }}
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="detail-item-horizontal">
+                      <span className="detail-label">
+                        {adminProfile.isRequestApproved ? (
+                          <CheckCircleOutlined style={{ marginRight: 8, color: "#52c41a" }} />
+                        ) : (
+                          <CloseCircleOutlined style={{ marginRight: 8, color: "#ff4d4f" }} />
+                        )}
+                        Request Status
+                      </span>
+                      <span className="detail-value">
+                        <Tag color={adminProfile.isRequestApproved ? "green" : "red"}>
+                          {adminProfile.isRequestApproved ? "Approved" : "Pending"}
+                        </Tag>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="detail-row">
+                    <div className="detail-item-horizontal">
+                      <span className="detail-label">
+                        {adminProfile.isActive ? (
+                          <CheckCircleOutlined style={{ marginRight: 8, color: "#52c41a" }} />
+                        ) : (
+                          <CloseCircleOutlined style={{ marginRight: 8, color: "#ff4d4f" }} />
+                        )}
+                        Account Status
+                      </span>
+                      <span className="detail-value">
+                        <Tag color={adminProfile.isActive ? "green" : "red"}>
+                          {adminProfile.isActive ? "Active" : "Inactive"}
+                        </Tag>
+                      </span>
+                    </div>
+
+                    <div className="detail-item-horizontal">
+                      <span className="detail-label">
+                        <CalendarOutlined style={{ marginRight: 8, color: "#667eea" }} />
+                        Account Created
+                      </span>
+                      <span className="detail-value">
+                        {moment(adminProfile.createdAt).format("DD MMM YYYY, HH:mm")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {adminProfile.lastLogin && (
+                    <div className="detail-row">
+                      <div className="detail-item-horizontal full-width">
+                        <span className="detail-label">
+                          <CalendarOutlined style={{ marginRight: 8, color: "#667eea" }} />
+                          Last Login
+                        </span>
+                        <span className="detail-value">
+                          {moment(adminProfile.lastLogin).format("DD MMM YYYY, HH:mm")}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </Modal>
+
+          {/* Deactivate Account Confirmation Modal */}
+          <Modal
+            title={
+              <span style={{ color: "#ff4d4f" }}>
+                <ExclamationCircleOutlined style={{ marginRight: 8, color: "#ff4d4f" }} />
+                Deactivate Account
+              </span>
+            }
+            open={isDeactivateModalVisible}
+            onCancel={() => !deactivating && setIsDeactivateModalVisible(false)}
+            footer={[
+              <Button
+                key="cancel"
+                onClick={() => setIsDeactivateModalVisible(false)}
+                disabled={deactivating}
+              >
+                Cancel
+              </Button>,
+              <Button
+                key="confirm"
+                type="primary"
+                danger
+                onClick={confirmDeactivateAccount}
+                loading={deactivating}
+              >
+                Yes, Deactivate My Account
+              </Button>,
+            ]}
+            width={500}
+            className="deactivate-account-modal"
+          >
+            <div style={{ padding: "20px 0" }}>
+              <p style={{ fontSize: "16px", marginBottom: "16px", fontWeight: 500 }}>
+                Are you sure you want to deactivate your admin account?
+              </p>
+              <div style={{ background: "#fff7e6", border: "1px solid #ffd591", borderRadius: "8px", padding: "16px", marginBottom: "16px" }}>
+                <p style={{ margin: 0, color: "#d46b08", fontSize: "14px" }}>
+                  <strong>Warning:</strong> Once deactivated, you will not be able to:
+                </p>
+                <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px", color: "#d46b08", fontSize: "14px" }}>
+                  <li>Login to the admin dashboard</li>
+                  <li>Access any admin features</li>
+                  <li>View user data or statistics</li>
+                </ul>
+                <p style={{ margin: "12px 0 0 0", color: "#d46b08", fontSize: "14px" }}>
+                  You will be logged out immediately after deactivation.
+                </p>
+              </div>
+              <p style={{ fontSize: "14px", color: "#666", margin: 0 }}>
+                If you want to reactivate your account later, please contact the system administrator.
+              </p>
+            </div>
           </Modal>
         </div>
       </div>
