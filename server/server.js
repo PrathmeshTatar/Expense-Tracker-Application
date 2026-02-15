@@ -40,7 +40,8 @@ app.use("/api/v1/user-information", require("./routes/userInfoRoutes"));
 app.use("/api/v1/admin", require("./routes/adminRoutes"));
 
 //port
-const PORT = 8000 || process.env.PORT;
+const PORT = process.env.PORT || 8000;
+
 
 //it is a test route just to see our server is working
 app.get("/", (req, res) => {
