@@ -2,12 +2,12 @@
 
 ## 🌐 GitHub Repo  
 ```bash
-https://github.com/Prakashsaw/Expense-Management-System
+https://github.com/PrathmeshTatar/Expense-Tracker-Application
 ```
 
 ## 🚀 Live Demo  
 ```bash
-https://expense-management-system-prakash.netlify.app/
+https://expense-tracker-application-ppt.netlify.app/
 ```
 
 ## 📌 Description  
@@ -43,12 +43,12 @@ It provides features like user authentication, expense tracking, and data visual
 
 ### **Step 1: Clone the project**  
 ```bash
-git clone https://github.com/Prakashsaw/Expense-Management-System.git
+git clone https://github.com/PrathmeshTatar/Expense-Tracker-Application
 ```
 
 ### **Step 2: Navigate to the project directory**  
 ```bash
-cd Expense-Management-System
+cd Expense-Tracker-Application
 ```
 
 ### **Step 3: Install dependencies**  
@@ -160,7 +160,7 @@ Once the setup is complete, the app will be running on your local system.
 ---
 
 ## 🛠 Made By  
-- [@Prakashsaw](https://github.com/Prakashsaw)  
+- https://github.com/PrathmeshTatar
 
 ---
 
